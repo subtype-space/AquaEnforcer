@@ -114,7 +114,7 @@ client.on('interactionCreate', async interaction => {
             await interaction.reply({ content: member + " - " + randomReply, ephemeral: false }); // this might change
             clickedUsers.add(userId);
         } else {
-            await interaction.reply({ content: 'You already logged water intake today with me. Keep it up!', ephemeral: false });
+            await interaction.reply({ content: 'You already logged water intake today with me. Keep it up!', ephemeral: true });
         }
         
     }
