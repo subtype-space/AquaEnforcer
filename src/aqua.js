@@ -102,9 +102,10 @@ client.on('interactionCreate', async interaction => {
     if (!interaction.isButton()) return;
 
     if (interaction.customId === 'hydrate_button') {
+        member = interaction.member.user.username;
         const randomReplyIndex = Math.floor(Math.random() * sassyReplies.length);
         const randomReply = sassyReplies[randomReplyIndex];
-        await interaction.reply({ content: randomReply, ephemeral: true });
+        await interaction.reply({ content: member + " - " + randomReply, ephemeral: false }); // this might change
     }
 });
 
