@@ -10,6 +10,7 @@ const { ActionRowBuilder } = require('@discordjs/builders');
 const { Client, GatewayIntentBits, ButtonBuilder, ButtonStyle } = require('discord.js');
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages ]});
 const cron = require('node-cron');
+const clickedUsers = new Set();
 
 // Bank of reminder messages
 // todo: separate profanity messages into a separate category so people can disable/enable it if they want to
@@ -78,6 +79,8 @@ const sassyReplies = [
 
 // Function to send a random reminder message
 function sendReminder() {
+    // Reset set
+    clickedUsers.clear();
     // Choose a random index from the reminderMessages array
     const randomIndexMessage = Math.floor(Math.random() * reminderMessages.length);
     const randomReminder = reminderMessages[randomIndexMessage];
@@ -102,10 +105,18 @@ client.on('interactionCreate', async interaction => {
     if (!interaction.isButton()) return;
 
     if (interaction.customId === 'hydrate_button') {
-        member = interaction.member.user.username;
-        const randomReplyIndex = Math.floor(Math.random() * sassyReplies.length);
-        const randomReply = sassyReplies[randomReplyIndex];
-        await interaction.reply({ content: member + " - " + randomReply, ephemeral: false }); // this might change
+        const member = interaction.member.user.username;
+        const userId = interaction.member.user.id;
+
+        if (!clickedUsers.has(userId)) {
+            const randomReplyIndex = Math.floor(Math.random() * sassyReplies.length);
+            const randomReply = sassyReplies[randomReplyIndex];
+            await interaction.reply({ content: member + " - " + randomReply, ephemeral: false }); // this might change
+            clickedUsers.add(userId);
+        } else {
+            await interaction.reply({ content: 'You already logged water intake today with me. Keep it up!', ephemeral: true });
+        }
+        
     }
 });
 
@@ -114,7 +125,7 @@ client.once('ready', () => {
     console.log('Scheduled to send reminders every day at noon, via node-cron.');
     cron.schedule('0 12 * * *', () => {
         sendReminder();
-    })
+    }, { timezone: 'America/New_York'});
 });
 
 client.login(process.env.TOKEN);
