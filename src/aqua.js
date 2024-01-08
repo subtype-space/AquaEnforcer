@@ -104,7 +104,7 @@ client.on('interactionCreate', async interaction => {
     if (interaction.customId === 'hydrate_button') {
         const randomReplyIndex = Math.floor(Math.random() * sassyReplies.length);
         const randomReply = sassyReplies[randomReplyIndex];
-        await interaction.reply({ content: randomReply, ephemeral: true });
+        await interaction.reply({ content: randomReply, ephemeral: false }); // this might change
     }
 });
 
