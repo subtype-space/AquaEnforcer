@@ -114,7 +114,7 @@ client.once('ready', () => {
     console.log('Scheduled to send reminders every day at noon, via node-cron.');
     cron.schedule('0 12 * * *', () => {
         sendReminder();
-    })
+    }, { timezone: 'America/New_York'});
 });
 
 client.login(process.env.TOKEN);
