@@ -104,7 +104,12 @@ client.on('interactionCreate', async interaction => {
     if (interaction.customId === 'hydrate_button') {
         const randomReplyIndex = Math.floor(Math.random() * sassyReplies.length);
         const randomReply = sassyReplies[randomReplyIndex];
-        interaction.reply({ content: randomReply, ephemeral: true });
+        try {
+            await interaction.message.react('💧');
+            await interaction.reply({ content: randomReply, ephemeral: true });
+        } catch (error) {
+            console.error('Looks like there was an error when someone was trying to interact with me! ', error);
+        }
     }
 });
 
