@@ -1,7 +1,7 @@
 /**
  * @author Andrew Subowo
  * @author _subtype
- * @verison 1.0
+ * @verison 2.0
  * HYDRATE OR DIEDRATE
  */
 
@@ -18,8 +18,6 @@ const pgclient = new PGClient ({
     password: process.env.POSTGRES_PASSWORD
 })
 const cron = require('node-cron');
-
-const clickedUsers = new Set();
 
 
 // Bank of reminder messages
@@ -49,6 +47,7 @@ const reminderMessages = [
     "If your skin could talk, it would say that u a dry ho' 🧖‍♀️💦"
 ];
 
+// Array of confirm text for the button
 const confirmMessages = [
     "HYDRATED!",
     "DRINK DONE!",
@@ -67,6 +66,7 @@ const confirmMessages = [
     "I'M A LITTLE QUENCH QUEEN, SHORT AND STOUT"
 ]
 
+// Array of replies to send when a user confirms they've hydrated for the day
 const sassyReplies = [
     "Oh, look who decided to hydrate. How groundbreaking!",
     "Wow, you managed to drink water. I'm genuinely shocked.",
@@ -89,8 +89,7 @@ const sassyReplies = [
 
 // Function to send a random reminder message
 function sendReminder() {
-    // Reset set
-    clickedUsers.clear();
+
     // Choose a random index from the reminderMessages array
     const randomIndexMessage = Math.floor(Math.random() * reminderMessages.length);
     const randomReminder = reminderMessages[randomIndexMessage];
@@ -109,6 +108,10 @@ function sendReminder() {
     client.channels.fetch(process.env.REMINDER_CHANNEL_ID).then(channel=>channel.send({ content: randomReminder, components: [row] }));
 }
 
+/**
+ * Function to reset a streak
+ * @param {String} userId The userId (represented as a string) to reset
+ */
 async function resetStreak(userId) {
     try {
         // Reset streak count to 0
@@ -128,7 +131,6 @@ client.once('ready', () => {
 });
 
 client.on('interactionCreate', async interaction => {
-
     if (!interaction.isButton()) return;
 
     if (interaction.customId === 'hydrate_button') {
@@ -184,5 +186,4 @@ client.login(process.env.TOKEN);
 pgclient.connect()
     .then(() => console.log('Connected to PostgreSQL'))
     .catch(err => console.error('Error connecting to PostgreSQL', err));
-//connectAndSetupTables();
 
