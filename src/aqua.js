@@ -8,9 +8,19 @@
 require('dotenv').config({ path: '.env' });
 const { ActionRowBuilder } = require('@discordjs/builders');
 const { Client, GatewayIntentBits, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client:PGClient } = require('pg');
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages ]});
+const pgclient = new PGClient ({
+    user: process.env.POSTGRES_USER,
+    host: 'ae-db',
+    database: process.env.POSTGRES_DB,
+    port: process.env.POSTGRES_PORT,
+    password: process.env.POSTGRES_PASSWORD
+})
 const cron = require('node-cron');
+
 const clickedUsers = new Set();
+
 
 // Bank of reminder messages
 // todo: separate profanity messages into a separate category so people can disable/enable it if they want to
@@ -99,26 +109,15 @@ function sendReminder() {
     client.channels.fetch(process.env.REMINDER_CHANNEL_ID).then(channel=>channel.send({ content: randomReminder, components: [row] }));
 }
 
-// TO DO
-client.on('interactionCreate', async interaction => {
-
-    if (!interaction.isButton()) return;
-
-    if (interaction.customId === 'hydrate_button') {
-        const member = interaction.member.user.username;
-        const userId = interaction.member.user.id;
-
-        if (!clickedUsers.has(userId)) {
-            const randomReplyIndex = Math.floor(Math.random() * sassyReplies.length);
-            const randomReply = sassyReplies[randomReplyIndex];
-            await interaction.reply({ content: member + " - " + randomReply, ephemeral: false }); // this might change
-            clickedUsers.add(userId);
-        } else {
-            await interaction.reply({ content: 'You already logged water intake today with me. Keep it up!', ephemeral: true });
-        }
-        
+async function resetStreak(userId) {
+    try {
+        // Reset streak count to 0
+        const resetStreakQuery = 'UPDATE user_streaks SET streak_count = 0 WHERE user_id = $1';
+        await pgclient.query(resetStreakQuery, [userId]);
+    } catch (error) {
+        console.error('Error resetting streak:', error);
     }
-});
+}
 
 client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}`);
@@ -128,4 +127,62 @@ client.once('ready', () => {
     }, { timezone: 'America/New_York'});
 });
 
+client.on('interactionCreate', async interaction => {
+
+    if (!interaction.isButton()) return;
+
+    if (interaction.customId === 'hydrate_button') {
+        const member = interaction.member.user.username;
+        const userId = interaction.member.user.id;
+
+        // Query to check if the user clicked today
+        const today = new Date().toISOString().split('T')[0]; // Get today's date
+        const checkClickQuery = 'SELECT * FROM user_clicks WHERE user_id = $1 AND click_date = $2';
+        
+        try {
+            const result = await pgclient.query(checkClickQuery, [userId, today]);
+            
+            if (result.rows.length > 0) {
+                // User has already clicked today
+                await interaction.reply({ content: 'You already logged water intake today with me. Keep it up!', ephemeral: true });
+            } else {
+                // Query to increment the streak count or initialize it if it doesn't exist
+                const updateStreakQuery = `
+                    INSERT INTO user_streaks (user_id, streak_count)
+                    VALUES ($1, 1)
+                    ON CONFLICT (user_id)
+                    DO UPDATE SET streak_count = user_streaks.streak_count + 1
+                    RETURNING streak_count;
+                `;
+
+                const updateClickQuery = 'INSERT INTO user_clicks (user_id, click_date) VALUES ($1, $2)';
+                
+                const streakResult = await pgclient.query(updateStreakQuery, [userId]);
+                const updatedStreakCount = streakResult.rows[0].streak_count;
+                const lastLogDate = new Date(streakResult.rows[0].last_log_date);
+    
+                const previousDay = new Date();
+                previousDay.setDate(previousDay.getDate() - 1);
+    
+                if (lastLogDate < previousDay) {
+                    // If last log was more than 1 day ago, reset streak to 0
+                    await resetStreak();
+                }
+
+                await pgclient.query(updateClickQuery, [userId, today]);
+                const randomReplyIndex = Math.floor(Math.random() * sassyReplies.length);
+                const randomReply = sassyReplies[randomReplyIndex];
+                await interaction.reply({ content: member + " - " + randomReply + "\n" + updatedStreakCount + " days hydrated in a row! 🥤🚰💧", ephemeral: false }); // this might change
+            }
+        } catch (error) {
+            console.error('Error handling button click:', error);
+        }
+    }
+});
+
 client.login(process.env.TOKEN);
+pgclient.connect()
+    .then(() => console.log('Connected to PostgreSQL'))
+    .catch(err => console.error('Error connecting to PostgreSQL', err));
+//connectAndSetupTables();
+
