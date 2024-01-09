@@ -124,10 +124,10 @@ async function resetStreak(userId) {
 
 client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}`);
-    console.log('Scheduled to send reminders every day at noon, via node-cron.');
-    cron.schedule('0 12 * * *', () => {
+    console.log('Scheduled to send reminders every day at 2PM EST (19 UTC), via node-cron.');
+    cron.schedule('0 19 * * *', () => {
         sendReminder();
-    }, { timezone: 'America/New_York'});
+    });
 });
 
 client.on('interactionCreate', async interaction => {
@@ -136,18 +136,30 @@ client.on('interactionCreate', async interaction => {
     if (interaction.customId === 'hydrate_button') {
         const member = interaction.member.user.username;
         const userId = interaction.member.user.id;
-
-        // Query to check if the user clicked today
-        const today = new Date().toISOString().split('T')[0]; // Get today's date
+        
+        const checkIn = new Date(); // Get current date and time
+        const checkInTimeGoal = new Date(today); // Create a new Date object for the checkInTimeGoal
+        checkInTimeGoal.setHours(19, 0, 0, 0); // set it for 2PM your system time
+        console.log(today);
+        console.log(checkInTimeGoal);
         const checkClickQuery = 'SELECT * FROM user_clicks WHERE user_id = $1 AND click_date = $2';
         
         try {
-            const result = await pgclient.query(checkClickQuery, [userId, today]);
-            
+            // Check if the user has already clicked today
+            const result = await pgclient.query(checkClickQuery, [userId, checkIn.toISOString().split('T')[0]]);
+            console.log(result);
             if (result.rows.length > 0) {
-                // User has already clicked today
-                await interaction.reply({ content: 'You already logged water intake today with me. Keep it up!', ephemeral: true });
+                // User has logged water today
+                if (checkIn < checkInTimeGoal) {
+                    // User has already clicked today
+                    await interaction.reply({ content: 'You already logged water intake today with me. Keep it up!', ephemeral: true });
+                } else {
+                    // If last log was more than 1 day ago, reset streak to 0
+                    await resetStreak();
+                }
+
             } else {
+                // No entry found for today, so add them
                 // Query to increment the streak count or initialize it if it doesn't exist
                 const updateStreakQuery = `
                     INSERT INTO user_streaks (user_id, streak_count)
@@ -161,17 +173,9 @@ client.on('interactionCreate', async interaction => {
                 
                 const streakResult = await pgclient.query(updateStreakQuery, [userId]);
                 const updatedStreakCount = streakResult.rows[0].streak_count;
-                const lastLogDate = new Date(streakResult.rows[0].last_log_date);
-    
-                const previousDay = new Date();
-                previousDay.setDate(previousDay.getDate() - 1);
-    
-                if (lastLogDate < previousDay) {
-                    // If last log was more than 1 day ago, reset streak to 0
-                    await resetStreak();
-                }
 
-                await pgclient.query(updateClickQuery, [userId, today]);
+
+                await pgclient.query(updateClickQuery, [userId, checkIn]);
                 const randomReplyIndex = Math.floor(Math.random() * sassyReplies.length);
                 const randomReply = sassyReplies[randomReplyIndex];
                 await interaction.reply({ content: member + " - " + randomReply + "\n" + updatedStreakCount + " days hydrated in a row! 🥤🚰💧", ephemeral: false }); // this might change
