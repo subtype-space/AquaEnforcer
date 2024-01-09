@@ -17,6 +17,7 @@ const pgclient = new PGClient ({
     port: process.env.POSTGRES_PORT,
     password: process.env.POSTGRES_PASSWORD
 })
+// node-cron uses your
 const cron = require('node-cron');
 
 
@@ -159,6 +160,7 @@ client.on('interactionCreate', async interaction => {
                 }
 
             } else {
+                // TO DO - move to it's own method or class
                 // No entry found for today, so add them
                 // Query to increment the streak count or initialize it if it doesn't exist
                 const updateStreakQuery = `
@@ -168,14 +170,15 @@ client.on('interactionCreate', async interaction => {
                     DO UPDATE SET streak_count = user_streaks.streak_count + 1
                     RETURNING streak_count;
                 `;
-
-                const updateClickQuery = 'INSERT INTO user_clicks (user_id, click_date) VALUES ($1, $2)';
-                
+                // Update a user's streak
                 const streakResult = await pgclient.query(updateStreakQuery, [userId]);
                 const updatedStreakCount = streakResult.rows[0].streak_count;
 
-
+                // Update streak query
+                const updateClickQuery = 'INSERT INTO user_clicks (user_id, click_date) VALUES ($1, $2)';
+                // Log the time a user has checked in
                 await pgclient.query(updateClickQuery, [userId, checkIn]);
+
                 const randomReplyIndex = Math.floor(Math.random() * sassyReplies.length);
                 const randomReply = sassyReplies[randomReplyIndex];
                 await interaction.reply({ content: member + " - " + randomReply + "\n" + updatedStreakCount + " days hydrated in a row! 🥤🚰💧", ephemeral: false }); // this might change
