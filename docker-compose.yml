@@ -12,6 +12,8 @@ services:
     volumes:
       - aquaenforcer_data:/var/lib/postgresql/data
       - ./init-database.sh:/docker-entrypoint-initdb.d/init-database.sh
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
     env_file: .env
     expose:
       - "5455"
@@ -25,6 +27,9 @@ services:
       context: .
       target: production
     container_name: aqua_enforcer
+    volumes:
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
     image: asubowo/aquaenforcer:2.0
     restart: unless-stopped
     env_file: .env

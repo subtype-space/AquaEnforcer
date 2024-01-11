@@ -7,7 +7,7 @@
 
 require('dotenv').config({ path: '.env' });
 const { ActionRowBuilder } = require('@discordjs/builders');
-const { Client, GatewayIntentBits, ButtonBuilder, ButtonStyle, DiscordAPIError } = require('discord.js');
+const { Client, GatewayIntentBits, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { Client:PGClient } = require('pg');
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages ]});
 const pgclient = new PGClient ({
@@ -132,7 +132,6 @@ async function resetStreak(userId) {
 async function updateStreakAndTime(interaction, userId, checkIn) {
     const member = interaction.member.user.username;
     console.log("Updating streak and last log time for " + member);
-
 
     const updateStreakQuery = `
     INSERT INTO user_streaks (user_id, streak_count)
