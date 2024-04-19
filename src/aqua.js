@@ -90,6 +90,8 @@ const sassyReplies = [
 
 // Function to send a random reminder message
 function sendReminder() {
+    const currTime = new Date();
+    console.log("Current hour is " + currTime.getHours());
 
     // Choose a random index from the reminderMessages array
     const randomIndexMessage = Math.floor(Math.random() * reminderMessages.length);
@@ -116,7 +118,7 @@ function sendReminder() {
 async function resetStreak(userId) {
     try {
         // Reset streak count to 0
-        const resetStreakQuery = 'UPDATE user_streaks SET streak_count = 0 WHERE user_id = $1';
+        const resetStreakQuery = 'UPDATE user_streak_count SET streak_count = 0 WHERE user_id = $1;';
         await pgclient.query(resetStreakQuery, [userId]);
     } catch (error) {
         console.error('Error resetting streak:', error);
@@ -134,7 +136,7 @@ async function updateStreakAndTime(interaction, userId, checkIn) {
     console.log("Updating streak and last log time for " + member);
 
     const updateStreakQuery = `
-    INSERT INTO user_streaks (user_id, streak_count)
+    INSERT INTO user_streak_count (user_id, streak_count)
     VALUES ($1, 1)
     ON CONFLICT (user_id)
     DO UPDATE SET streak_count = user_streaks.streak_count + 1
@@ -146,8 +148,17 @@ async function updateStreakAndTime(interaction, userId, checkIn) {
     console.log("Streak updated to " + updatedStreakCount);
 
     console.log("Updating last log date to " + checkIn);
-    // Update streak query
-    const updateClickQuery = 'INSERT INTO user_clicks (user_id, click_date) VALUES ($1, $2)';
+
+    // Update the last streak date
+    const updateClickQuery = `
+    INSERT INTO streak_date (user_id, click_date)
+    VALUES ($1, $2)
+    ON CONFLICT (user_id)
+    DO UPDATE SET click_date = $2
+    RETURNING user_click;
+    `;
+
+    //const updateClickQuery = 'INSERT INTO user_clicks (user_id, click_date) VALUES ($1, $2)';
     // Log the time a user has checked in
     await pgclient.query(updateClickQuery, [userId, checkIn]);
 
@@ -172,10 +183,11 @@ client.on('interactionCreate', async interaction => {
         const member = interaction.member.user.username;
         const userId = interaction.member.user.id;
         const checkIn = new Date(); // Get current date and time
-        const checkInGoal = new Date();
-        checkInGoal.setHours(22, 0, 0, 0);
+        const yesterdayDate = new Date()
+        yesterdayDate.setDate(checkIn.getDate() - 1);
+        
    
-        const checkClickQuery = 'SELECT MAX(click_date) AS last_click_date FROM user_clicks WHERE user_id = $1';
+        const checkClickQuery = 'SELECT click_date AS last_click_date FROM user_streak_date WHERE user_id = $1;';
         
         try {
             // Check for when they last checked in
@@ -185,28 +197,25 @@ client.on('interactionCreate', async interaction => {
             // If a user has logged any time previously
             if (lastClickDate) {
                 const lastClickTime = new Date(lastClickDate);
-                // Calculate the difference in milliseconds between the last click and the current time
-                const timeDifference = checkIn.getTime() - lastClickTime.getTime();
-                const oneDayInMilliseconds = 24 * 60 * 60 * 1000; // 1 day in milliseconds
-
-                if (timeDifference >= oneDayInMilliseconds && checkIn > checkInGoal) {
-                    // If it's been more than at least a single day since the last check-in AND it's after the cut-off time , reset streak to 0
-                    await resetStreak(userId);
-                }
 
                 // If it's the same day, tell the user that they've already logged and ignore
-                console.log("Last click time for " + member + ": " + lastClickTime.toDateString() + " and check in time is " + checkIn.toDateString());
+                console.log("Last click time for " + member + ": " + lastClickTime.toDateString() + " | yesterday is " + yesterdayDate.toDateString());
                 if (lastClickTime.toDateString() === checkIn.toDateString()) {
                     // User has logged water today
                     await interaction.reply({ content: 'You already logged water intake today with me. Keep it up!', ephemeral: true });
-                } else {
+                } else if (lastClickTime === yesterdayDate) {
                     // If it's not the same day they're trying to interact with me, pass it to the streak and time handler
                     updateStreakAndTime(interaction, userId, checkIn);
-                } 
+                } else {
+                    // It's been longer than a day, reset the streak
+                    await resetStreak(userId);
+                }
+
             } else {
                 // If this is a new user logging, still pass it back to the streak and time handler
                 updateStreakAndTime(interaction, userId, checkIn);
             }
+
         } catch (error) {
             console.error('Error handling button click:', error);
         }
