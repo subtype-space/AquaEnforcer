@@ -1,12 +1,37 @@
 version: "3.8"
 
+volumes:
+  aquaenforcer_data:
+    driver: local
+
 services:
+  ae-db:
+    image: postgres
+    container_name: aqua_enforcer_db
+    restart: unless-stopped
+    volumes:
+      - aquaenforcer_data:/var/lib/postgresql/data
+      - ./init-database.sh:/docker-entrypoint-initdb.d/init-database.sh
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    env_file: .env
+    expose:
+      - "5455"
+    # HOST:CONTAINER
+    ports:
+      - "5455:5455"
+    command: "-p 5455"
+
   aquaenforcer:
     build:
       context: .
       target: production
     container_name: aqua_enforcer
-    image: asubowo/aquaenforcer:1.0
+    volumes:
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    image: asubowo/aquaenforcer:2.0
     restart: unless-stopped
     env_file: .env
-    network_mode: bridge
+    depends_on:
+      - ae-db

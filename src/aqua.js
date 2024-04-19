@@ -1,16 +1,25 @@
 /**
  * @author Andrew Subowo
  * @author _subtype
- * @verison 1.0
+ * @verison 2.0
  * HYDRATE OR DIEDRATE
  */
 
 require('dotenv').config({ path: '.env' });
 const { ActionRowBuilder } = require('@discordjs/builders');
 const { Client, GatewayIntentBits, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client:PGClient } = require('pg');
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages ]});
+const pgclient = new PGClient ({
+    user: process.env.POSTGRES_USER,
+    host: 'ae-db',
+    database: process.env.POSTGRES_DB,
+    port: process.env.POSTGRES_PORT,
+    password: process.env.POSTGRES_PASSWORD
+})
+// node-cron uses your
 const cron = require('node-cron');
-const clickedUsers = new Set();
+
 
 // Bank of reminder messages
 // todo: separate profanity messages into a separate category so people can disable/enable it if they want to
@@ -39,6 +48,7 @@ const reminderMessages = [
     "If your skin could talk, it would say that u a dry ho' 🧖‍♀️💦"
 ];
 
+// Array of confirm text for the button
 const confirmMessages = [
     "HYDRATED!",
     "DRINK DONE!",
@@ -57,6 +67,7 @@ const confirmMessages = [
     "I'M A LITTLE QUENCH QUEEN, SHORT AND STOUT"
 ]
 
+// Array of replies to send when a user confirms they've hydrated for the day
 const sassyReplies = [
     "Oh, look who decided to hydrate. How groundbreaking!",
     "Wow, you managed to drink water. I'm genuinely shocked.",
@@ -79,8 +90,9 @@ const sassyReplies = [
 
 // Function to send a random reminder message
 function sendReminder() {
-    // Reset set
-    clickedUsers.clear();
+    const currTime = new Date();
+    console.log("Current hour is " + currTime.getHours());
+
     // Choose a random index from the reminderMessages array
     const randomIndexMessage = Math.floor(Math.random() * reminderMessages.length);
     const randomReminder = reminderMessages[randomIndexMessage];
@@ -99,33 +111,119 @@ function sendReminder() {
     client.channels.fetch(process.env.REMINDER_CHANNEL_ID).then(channel=>channel.send({ content: randomReminder, components: [row] }));
 }
 
-// TO DO
-client.on('interactionCreate', async interaction => {
+/**
+ * Function to reset a streak
+ * @param { String } userId The userId (represented as a string) to reset
+ */
+async function resetStreak(userId) {
+    try {
+        // Reset streak count to 0
+        const resetStreakQuery = 'UPDATE user_streak_count SET streak_count = 0 WHERE user_id = $1;';
+        await pgclient.query(resetStreakQuery, [userId]);
+    } catch (error) {
+        console.error('Error resetting streak:', error);
+    }
+}
 
+/**
+ * 
+ * @param { import('discord.js').Interaction } interaction The Discord interaction object
+ * @param { String } userId The userId (represented as a string) to reset
+ * @param { Date } checkIn The checkIn time represented as a Date
+ */
+async function updateStreakAndTime(interaction, userId, checkIn) {
+    const member = interaction.member.user.username;
+    console.log("Updating streak and last log time for " + member);
+
+    const updateStreakQuery = `
+    INSERT INTO user_streak_count (user_id, streak_count)
+    VALUES ($1, 1)
+    ON CONFLICT (user_id)
+    DO UPDATE SET streak_count = user_streaks.streak_count + 1
+    RETURNING streak_count;
+    `;
+    // Update a user's streak
+    const streakResult = await pgclient.query(updateStreakQuery, [userId]);
+    const updatedStreakCount = streakResult.rows[0].streak_count;
+    console.log("Streak updated to " + updatedStreakCount);
+
+    console.log("Updating last log date to " + checkIn);
+
+    // Update the last streak date
+    const updateClickQuery = `
+    INSERT INTO streak_date (user_id, click_date)
+    VALUES ($1, $2)
+    ON CONFLICT (user_id)
+    DO UPDATE SET click_date = $2
+    RETURNING user_click;
+    `;
+
+    //const updateClickQuery = 'INSERT INTO user_clicks (user_id, click_date) VALUES ($1, $2)';
+    // Log the time a user has checked in
+    await pgclient.query(updateClickQuery, [userId, checkIn]);
+
+    const randomReplyIndex = Math.floor(Math.random() * sassyReplies.length);
+    const randomReply = sassyReplies[randomReplyIndex];
+
+    await interaction.reply({ content: member + " - " + randomReply + "\n" + updatedStreakCount + " days hydrated in a row! 🥤🚰💧", ephemeral: false }); // this might change
+}
+
+client.once('ready', () => {
+    console.log(`Logged in as ${client.user.tag}`);
+    console.log('Scheduled to send reminders every day at 2PM given your system timezone, via node-cron.');
+    cron.schedule('0 14 * * *', () => {
+        sendReminder();
+    });
+});
+
+client.on('interactionCreate', async interaction => {
     if (!interaction.isButton()) return;
 
     if (interaction.customId === 'hydrate_button') {
         const member = interaction.member.user.username;
         const userId = interaction.member.user.id;
-
-        if (!clickedUsers.has(userId)) {
-            const randomReplyIndex = Math.floor(Math.random() * sassyReplies.length);
-            const randomReply = sassyReplies[randomReplyIndex];
-            await interaction.reply({ content: member + " - " + randomReply, ephemeral: false }); // this might change
-            clickedUsers.add(userId);
-        } else {
-            await interaction.reply({ content: 'You already logged water intake today with me. Keep it up!', ephemeral: true });
-        }
+        const checkIn = new Date(); // Get current date and time
+        const yesterdayDate = new Date()
+        yesterdayDate.setDate(checkIn.getDate() - 1);
         
+   
+        const checkClickQuery = 'SELECT click_date AS last_click_date FROM user_streak_date WHERE user_id = $1;';
+        
+        try {
+            // Check for when they last checked in
+            const lastClickResult = await pgclient.query(checkClickQuery, [userId]);
+            const lastClickDate = lastClickResult.rows[0].last_click_date;
+
+            // If a user has logged any time previously
+            if (lastClickDate) {
+                const lastClickTime = new Date(lastClickDate);
+
+                // If it's the same day, tell the user that they've already logged and ignore
+                console.log("Last click time for " + member + ": " + lastClickTime.toDateString() + " | yesterday is " + yesterdayDate.toDateString());
+                if (lastClickTime.toDateString() === checkIn.toDateString()) {
+                    // User has logged water today
+                    await interaction.reply({ content: 'You already logged water intake today with me. Keep it up!', ephemeral: true });
+                } else if (lastClickTime === yesterdayDate) {
+                    // If it's not the same day they're trying to interact with me, pass it to the streak and time handler
+                    updateStreakAndTime(interaction, userId, checkIn);
+                } else {
+                    // It's been longer than a day, reset the streak
+                    await resetStreak(userId);
+                }
+
+            } else {
+                // If this is a new user logging, still pass it back to the streak and time handler
+                updateStreakAndTime(interaction, userId, checkIn);
+            }
+
+        } catch (error) {
+            console.error('Error handling button click:', error);
+        }
     }
 });
 
-client.once('ready', () => {
-    console.log(`Logged in as ${client.user.tag}`);
-    console.log('Scheduled to send reminders every day at noon, via node-cron.');
-    cron.schedule('0 12 * * *', () => {
-        sendReminder();
-    }, { timezone: 'America/New_York'});
-});
-
 client.login(process.env.TOKEN);
+pgclient.connect()
+    .then(() => console.log('Connected to PostgreSQL'))
+    .catch(err => console.error('Error connecting to PostgreSQL', err));
+
