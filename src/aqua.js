@@ -151,7 +151,7 @@ async function updateStreakAndTime(interaction, userId, checkIn) {
 
     // Update the last streak date
     const updateClickQuery = `
-    INSERT INTO streak_date (user_id, click_date)
+    INSERT INTO user_streak_date (user_id, click_date)
     VALUES ($1, $2)
     ON CONFLICT (user_id)
     DO UPDATE SET click_date = $2
