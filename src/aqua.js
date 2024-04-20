@@ -96,7 +96,7 @@ function sendReminder() {
     // Choose a random index from the reminderMessages array
     const randomIndexMessage = Math.floor(Math.random() * reminderMessages.length);
     const randomReminder = reminderMessages[randomIndexMessage];
-    
+
     const randomConfirmMessageIndex = Math.floor(Math.random() * confirmMessages.length);
     const randomConfirmMessage = confirmMessages[randomConfirmMessageIndex];
 
@@ -126,7 +126,7 @@ async function resetStreak(userId) {
 }
 
 /**
- * 
+ *
  * @param { import('discord.js').Interaction } interaction The Discord interaction object
  * @param { String } userId The userId (represented as a string) to reset
  * @param { Date } checkIn The checkIn time represented as a Date
@@ -139,7 +139,7 @@ async function updateStreakAndTime(interaction, userId, checkIn) {
     INSERT INTO user_streak_count (user_id, streak_count)
     VALUES ($1, 1)
     ON CONFLICT (user_id)
-    DO UPDATE SET streak_count = user_streaks.streak_count + 1
+    DO UPDATE SET streak_count = user_streak_count.streak_count + 1
     RETURNING streak_count;
     `;
     // Update a user's streak
@@ -151,14 +151,9 @@ async function updateStreakAndTime(interaction, userId, checkIn) {
 
     // Update the last streak date
     const updateClickQuery = `
-    INSERT INTO user_streak_date (user_id, click_date)
-    VALUES ($1, $2)
-    ON CONFLICT (user_id)
-    DO UPDATE SET click_date = $2
-    RETURNING user_click;
+    UPDATE user_streak_date SET click_date = $2 WHERE user_id = $1;
     `;
 
-    //const updateClickQuery = 'INSERT INTO user_clicks (user_id, click_date) VALUES ($1, $2)';
     // Log the time a user has checked in
     await pgclient.query(updateClickQuery, [userId, checkIn]);
 
@@ -185,10 +180,10 @@ client.on('interactionCreate', async interaction => {
         const checkIn = new Date(); // Get current date and time
         const yesterdayDate = new Date()
         yesterdayDate.setDate(checkIn.getDate() - 1);
-        
-   
+
+
         const checkClickQuery = 'SELECT click_date AS last_click_date FROM user_streak_date WHERE user_id = $1;';
-        
+
         try {
             // Check for when they last checked in
             const lastClickResult = await pgclient.query(checkClickQuery, [userId]);
@@ -199,20 +194,27 @@ client.on('interactionCreate', async interaction => {
                 const lastClickTime = new Date(lastClickDate);
 
                 // If it's the same day, tell the user that they've already logged and ignore
+                console.log('Timestamp:' + checkIn);
                 console.log("Last click time for " + member + ": " + lastClickTime.toDateString() + " | yesterday is " + yesterdayDate.toDateString());
                 if (lastClickTime.toDateString() === checkIn.toDateString()) {
                     // User has logged water today
                     await interaction.reply({ content: 'You already logged water intake today with me. Keep it up!', ephemeral: true });
-                } else if (lastClickTime === yesterdayDate) {
+
+                } else if (lastClickTime.toDateString() === yesterdayDate.toDateString()) {
+                    console.log('Last click was yesterday, updating to today');
                     // If it's not the same day they're trying to interact with me, pass it to the streak and time handler
                     updateStreakAndTime(interaction, userId, checkIn);
+
                 } else {
+                    console.log('Resetting streak');
                     // It's been longer than a day, reset the streak
                     await resetStreak(userId);
+                    updateStreakAndTime(interaction, userId, checkIn);
                 }
 
             } else {
                 // If this is a new user logging, still pass it back to the streak and time handler
+                console.log('New user logging, creating new entry')
                 updateStreakAndTime(interaction, userId, checkIn);
             }
 
