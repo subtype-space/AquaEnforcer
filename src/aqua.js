@@ -149,12 +149,13 @@ async function updateStreakAndTime(interaction, userId, checkIn) {
 
     console.log("Updating last log date to " + checkIn);
 
-    // Update the last streak date
     const updateClickQuery = `
-    UPDATE user_streak_date SET click_date = $2 WHERE user_id = $1;
+      INSERT INTO user_streak_date (user_id, click_date)
+      VALUES ($1, $2)
+      ON CONFLICT (user_id)
+      DO UPDATE SET click_date = EXCLUDED.click_date;
     `;
 
-    // Log the time a user has checked in
     await pgclient.query(updateClickQuery, [userId, checkIn]);
 
     const randomReplyIndex = Math.floor(Math.random() * sassyReplies.length);
@@ -187,7 +188,7 @@ client.on('interactionCreate', async interaction => {
         try {
             // Check for when they last checked in
             const lastClickResult = await pgclient.query(checkClickQuery, [userId]);
-            const lastClickDate = lastClickResult.rows[0].last_click_date;
+            const lastClickDate = lastClickResult.rows[0]?.last_click_date;
 
             // If a user has logged any time previously
             if (lastClickDate) {
