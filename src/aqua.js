@@ -210,8 +210,13 @@ client.on("interactionCreate", async (interaction) => {
 
     try {
       const lastClickResult = await pgclient.query(checkClickQuery, [userId])
-      const lastClickRow = lastClickResult.rows[0]
-      const lastClickDate = lastClickRow?.last_click_date
+
+      let lastClickDate = null
+
+      if (lastClickResult.rowCount > 0) {
+        // row exists -> get the aliased column
+        lastClickDate = lastClickResult.rows[0].last_click_date
+      }
 
       // If this is a brand new user with no row in user_streak_date yet
       if (!lastClickDate) {
